@@ -1,57 +1,35 @@
-# Skeleton for building a ELF loader
+# ELF loader
+
+#### Assignment Link: https://ocw.cs.pub.ro/courses/so/teme/tema-3 (in romanian)
+---
 
 ## Introduction
-This project contains a skeleton for building an
-[ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) binary
-on-demand loader in Linux. The loader will provide two methods, defined in the
-`loader.h` header:
-* `int so_init_loader(void);` - initializes the on-demand loader
-* `int so_execute(char *path, char *argv[]);` - executes the binary located in
-`path` with the required `argv` arguments.
+The implementation of the loader is in `loader.c`. The loader will provide two methods, defined in the `loader.h` header:
 
-## Content
-The project contains of three components, each of them in its own
-directory:
-* `loader` - a dynamic library that can be used to run ELF binaries. It
-consists of the following files:
-  * `exec_parser.c` - Implements an ELF binary parser.
-  * `exec_parser.h` - The header exposed by the ELF parser.
-  * `loader.h` - The interface of the loader, described in the
-  [Introduction](#introduction) section.
-  * `loader.c` - This is where the loader should be implemented.
-  * `debug.h` - header for the `dprintf` function that can be used for logging
-  and debugging.
-* `exec` - a program that uses the `libso_loader.so` library to run an ELF
-binary received as argument.
-* `test_prog` - an ELF binary used to test the loader implementation.
+- so_init_loader() will be called before any other function from the loader. It should initialize the loader and return 0 on success, or -1 on error.
 
-There project also contains 2 makefiles:
-* `Makefile` - builds the `libso_loader.so` library from the `loader`
-directory
-* `Makefile.example` - builds the `so_exec` and `so_test_prog` binaries from
-the `exec` and `test_prog` directories that can be used to test the loader.
+- so_execute() will be called after so_init_loader(). It should load the binary located in path and execute it with the required arguments. It should return the exit code of the binary on success and -1 on error.
 
-## Usage Build the loader:
+The initialization of the loader is based on inregistration of the signal handler for SIGSEGV. The handler will be called when the loader will try to access a page that is not mapped. The handler will map the page and return to the instruction that caused the SIGSEGV.
+
+
+## The implementation of the `signal handler`
 ```
-make
+The segv_handler() function is the signal handler for SIGSEGV. It will be called when the loader will try to access a page that is not mapped. These are the steps that the handler will do:
 ```
+- check if the address that caused the SIGSEGV is in one of the segments of the binary that is being executed. If it is not, then the handler will return segmentation fault. The check is done by iterating through the segments of the binary and checking if the address is in the range of the segment. If the address is in the range of the segment, the function will return the segment, otherwise it will return NULL.
 
-This should generate the `libso_loader.so` library. Next, build the example:
+- check if the segment was already mapped. If it was, then the handler will return segmentation fault. In the segment->data field, the loader stores a vector of zeros and ones, having the same size as the segment. If the value at the index of the page that caused the SIGSEGV is 1, then the page was already mapped. If the value is 0, then the page was not mapped. The check is done by dividing the offset of the address that caused the SIGSEGV by the page size and checking the value at the index of the vector.
 
-```
-make -f Makefile.example
-```
+- if the segment was not mapped, then the handler will map the segment using mmap() and set the value at the index of the vector to 1. It is very important to set the value to 1 before the mapping, because the handler can be called again while the mapping is in progress. If the value is set to 1, then the handler will not try to map the segment again. Moreover, when we map, we set the permission to write, because we will need to write the values of the segment in the mapped page.
 
-This should generate the `so_exec` and `so_test_prog` used for the test:
+- when the mapping is done, we copy the values of the segment in the mapped page. We do this by reading the values of the segment from the file descriptor of the binary and writing them in the mapped page. The offset of the segment is the offset of the page that caused the SIGSEGV, so we need to add the offset of the segment to the offset of the page. The size of the segment is the size of the page, so we need to read and write the size of the page. We need to be careful if we have the segment bewteen file size and memory size, because we need to read only the values that are in the file and write 0 in the rest of the page.
 
-```
-LD_LIBRARY_PATH=. ./so_exec so_test_prog
-```
+- finally, we set the permission of the page to permission of the segment. We do this by using mprotect().
 
-**NOTE:** the skeleton does not have the loader implemented, thus when running
-the command above, your program will crash!
+The segmentation fault is returned by appelating the old signal (old_sa).
 
-## Notes
-This skeleton is provided by the Operating System team from the University
-Politehnica of Bucharest to their students to help them complete their
-Executable Loader assignment.
+### Documentation
+https://man7.org/linux/man-pages/man2/sigaction.2.html
+https://pubs.opengroup.org/onlinepubs/007904875/functions/sigaction.html
+https://man7.org/linux/man-pages/man2/mmap.2.html

@@ -83,13 +83,13 @@ void *map(so_seg_t *segment, void *fault_addr)
 	size_t segment_offset = (uintptr_t)(fault_addr) - segment->vaddr -
 							(((uintptr_t)(fault_addr) - segment->vaddr) %
 							getpagesize());
-	// Map the page
-	void *page = mmap((void *)segment->vaddr + segment_offset, getpagesize(),
-					  PERM_R | PERM_W, MAP_FIXED | MAP_SHARED | MAP_ANONYMOUS,
-					  -1, 0);
-
 	// Change the page table
 	((int *) segment->data)[segment_offset / getpagesize()] = 1;
+	
+	// Map the page
+	void *page = mmap((void *)segment->vaddr + segment_offset, getpagesize(),
+					  PERM_W, MAP_FIXED | MAP_SHARED | MAP_ANONYMOUS,
+					  -1, 0);
 
 	return page;
 }
